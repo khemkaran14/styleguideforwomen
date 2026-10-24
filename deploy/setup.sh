@@ -4,7 +4,8 @@
 #   sudo DOMAIN=style.example.com EMAIL=you@example.com ADMIN_EMAIL=you@example.com bash deploy/setup.sh
 # Optional, for "Forgot password" emails (Hostinger email shown):
 #   SMTP_HOST=smtp.hostinger.com SMTP_PORT=465 SMTP_USER=hello@example.com SMTP_PASS='mailbox password'
-# Safe to run again: it keeps the database and any email settings already saved.
+# Optional site details: SITE_NAME='Signora Styles' CONTACT_EMAIL=hello@example.com GOOGLE_SITE_VERIFICATION=code
+# Safe to run again: it keeps the database and any optional settings already saved.
 set -euo pipefail
 
 DOMAIN="${DOMAIN:?Set DOMAIN, e.g. DOMAIN=style.livelifetricks.com}"
@@ -48,8 +49,8 @@ chown -R styleguide:styleguide "$APP_DIR" "$DATA_DIR"
 chmod 750 "$DATA_DIR"
 
 echo "==> Writing settings to /etc/styleguide.env"
-OLD_MAIL=""
-[ -f /etc/styleguide.env ] && OLD_MAIL="$(grep -E '^(SMTP_|MAIL_FROM=)' /etc/styleguide.env || true)"
+OLD_ENV=""
+[ -f /etc/styleguide.env ] && OLD_ENV="$(cat /etc/styleguide.env)"
 cat > /etc/styleguide.env <<ENV
 NODE_ENV=production
 PORT=$PORT
@@ -58,17 +59,16 @@ ADMIN_EMAILS=$ADMIN_EMAIL
 COOKIE_SECURE=true
 PUBLIC_URL=https://$DOMAIN
 ENV
-if [ -n "${SMTP_HOST:-}" ]; then
-  cat >> /etc/styleguide.env <<ENV
-SMTP_HOST=$SMTP_HOST
-SMTP_PORT=${SMTP_PORT:-465}
-SMTP_USER=${SMTP_USER:-}
-SMTP_PASS=${SMTP_PASS:-}
-MAIL_FROM=${MAIL_FROM:-${SMTP_USER:-}}
-ENV
-elif [ -n "$OLD_MAIL" ]; then
-  echo "$OLD_MAIL" >> /etc/styleguide.env
-fi
+# Optional settings: use the value given now, otherwise keep the one saved last time.
+[ -n "${SMTP_HOST:-}" ] && { SMTP_PORT="${SMTP_PORT:-465}"; MAIL_FROM="${MAIL_FROM:-${SMTP_USER:-}}"; }
+for KEY in SITE_NAME CONTACT_EMAIL GOOGLE_SITE_VERIFICATION SMTP_HOST SMTP_PORT SMTP_USER SMTP_PASS MAIL_FROM; do
+  VAL="${!KEY:-}"
+  if [ -n "$VAL" ]; then
+    printf '%s=%s\n' "$KEY" "$VAL" >> /etc/styleguide.env
+  else
+    printf '%s\n' "$OLD_ENV" | grep -E "^$KEY=" >> /etc/styleguide.env || true
+  fi
+done
 chown root:styleguide /etc/styleguide.env
 chmod 640 /etc/styleguide.env
 

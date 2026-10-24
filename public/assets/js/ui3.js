@@ -41,7 +41,7 @@ function card(o){
    <button class="tryon" data-try="${o.id}">Customise</button>
    <div class="info">
      <div class="tags"><span class="tag ${o.c}">${CATN[o.c]}</span><span class="tag">${o.r}</span><span class="tag">${o.m}</span></div>
-     <h3>${o.n}</h3>
+     <h3><a href="/looks/${o.id}" class="tlink">${o.n}</a></h3>
      <div class="occ">${o.occ.map(k=>OCC[k].n).join(' · ')}</div>
      <p class="colourline">${o.cn}</p>
    </div></article>`;
@@ -96,6 +96,7 @@ function openLook(id){
     <div><div class="eyebrow" style="margin-bottom:6px">Prompt used for this photo</div>
       <textarea class="promptbox" id="dlgPrompt" readonly aria-label="Prompt">${pr}</textarea>
       <div class="row" style="margin-top:8px"><button class="btn ghost" id="dlgCopy">Copy prompt</button></div></div>
+    <a class="small" href="/looks/${o.id}" style="color:var(--rani);font-weight:700">Open this look’s page to share it →</a>
   </div></div>`;
   if(!dlg.open)dlg.showModal();
   $('#dlgClose').onclick=()=>dlg.close();
@@ -336,4 +337,4 @@ async function loadSaved(s){BT=s.bt||'regular';await pickSubject(s.who);D.parts=
   for(const r of s.regions||[]){if(r.pid){const t=D.regions.find(q=>q.pid===r.pid);if(t)t.col=r.col}else D.regions.push({mask:flood(r.seed[0],r.seed[1],r.seed[2]),col:r.col,seed:r.seed})}syncDR();drawDR();toast('Saved look loaded')}
 
 /* ---------- BOOT ---------- */
-persist();renderGrid();renderOcc();renderQuiz();renderMyLooks();pickSubject('model');
+persist();renderGrid();renderOcc();renderQuiz();renderMyLooks();var drReady=pickSubject('model');

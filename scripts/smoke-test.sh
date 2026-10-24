@@ -34,4 +34,14 @@ r=$(curl -s -H "$J" -d "{\"token\":\"$TOKEN\",\"password\":\"again12345\"}" "$B/
 r=$(curl -s -H "$J" -d '{"email":"maya@example.com","password":"brandnew99"}' "$B/api/auth/login"); has "$r" 'maya@example.com' "login with new password"
 code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Origin: https://evil.example' -H "$J" -d '{}' "$B/api/auth/login"); [ "$code" = 403 ] || fail "cross-site post blocked ($code)"
 code=$(curl -s -o /dev/null -w '%{http_code}' "$B/"); [ "$code" = 200 ] || fail "home page ($code)"
+for u in /looks /looks/banarasi /occasions /occasions/wedding /about /contact /privacy /terms /robots.txt /sitemap.xml /site.webmanifest /favicon.ico; do
+  code=$(curl -s -o /dev/null -w '%{http_code}' "$B$u"); [ "$code" = 200 ] || fail "$u should be 200 ($code)"
+done
+for u in /looks/nope /occasions/__proto__ /no/such/page; do
+  code=$(curl -s -o /dev/null -w '%{http_code}' "$B$u"); [ "$code" = 404 ] || fail "$u should be 404 ($code)"
+done
+r=$(curl -s "$B/"); has "$r" 'rel="canonical"' "home has canonical"; has "$r" 'application/ld+json' "home has structured data"; has "$r" 'href="/privacy"' "home links to privacy"
+r=$(curl -s "$B/sitemap.xml"); has "$r" '/looks/banarasi</loc>' "sitemap lists looks"
+r=$(curl -s -d 'name=Priya&email=priya@example.com&topic=General+question&message=Lovely+guide%2C+thank+you!' "$B/contact"); has "$r" 'Thank you' "contact form"
+r=$(curl -s -b "$A" "$B/api/admin/messages"); has "$r" 'priya@example.com' "admin sees contact message"
 echo "All smoke tests passed."

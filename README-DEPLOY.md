@@ -68,6 +68,11 @@ sudo DOMAIN=style.yourdomain.com \
 - `EMAIL`: where Let's Encrypt sends certificate notices
 - `ADMIN_EMAIL`: the email you'll sign up with. That account becomes the admin. You can list several, separated by commas. Only these emails can become admin.
 
+**Optional: site name, contact email and Google verification.** Add any of these to the command:
+- `SITE_NAME='Signora Styles'` changes the name in page titles, legal pages and emails (default: The Ultimate Style Guide)
+- `CONTACT_EMAIL=hello@yourdomain.com` is shown on the Contact and Privacy pages, and contact-form messages are emailed there (when email is set up)
+- `GOOGLE_SITE_VERIFICATION=abc123` is the code from Google Search Console (see “Get found on Google” below)
+
 **Optional: password-reset emails.** To let members reset a forgotten password by email, add your mailbox's SMTP details to the same command. With a Hostinger email account (hPanel → **Emails**) it looks like this:
 
 ```bash
@@ -90,6 +95,25 @@ Open the site, click **Sign in → Create an account**, and sign up with your `A
 - post an announcement banner, choose the front-page looks, and hide looks
 
 ---
+
+## Get found on Google
+
+The site already has everything Google needs: a page for every look and occasion, a sitemap at `/sitemap.xml`, `robots.txt`, page titles and descriptions, share images and structured data. To tell Google about it:
+
+1. Go to [Google Search Console](https://search.google.com/search-console) and click **Add property**.
+2. Choose **URL prefix** and enter `https://signorastyles.livelifetricks.com` (your subdomain).
+3. Pick **HTML tag** as the verification method. Copy only the code inside `content="..."`.
+4. On the VPS, add it to the settings and restart:
+   ```bash
+   echo 'GOOGLE_SITE_VERIFICATION=paste-the-code-here' | sudo tee -a /etc/styleguide.env
+   sudo systemctl restart styleguide
+   ```
+5. Back in Search Console, click **Verify**.
+6. Open **Sitemaps** in the left menu, enter `sitemap.xml` and click **Submit**.
+
+Google usually starts showing pages within a few days to a few weeks. Search Console’s **Pages** report shows what has been indexed. You can do the same for Bing at [Bing Webmaster Tools](https://www.bing.com/webmasters), which can import straight from Search Console.
+
+**Before you promote the site**, read the Privacy policy (`/privacy`) and Terms of use (`/terms`). They are written for this site (accounts, no ads or trackers, hosting at Hostinger, Indian law), but they are a starting point, not legal advice. Have them checked if you add things like ads, analytics or selling products.
 
 ## Updating to a new version
 
@@ -123,7 +147,8 @@ Until those secrets exist the deploy step is skipped and only the tests run.
 | Restart | `sudo systemctl restart styleguide` |
 | Live logs | `sudo journalctl -u styleguide -f` |
 | Back up now | `cd /var/www/styleguide && sudo -u styleguide DATA_DIR=/var/lib/styleguide node scripts/backup.js` |
-| Change admin emails or email settings | edit `/etc/styleguide.env`, then restart |
+| Change admin emails, site name, contact or email settings | edit `/etc/styleguide.env`, then restart |
+| Read contact-form messages | **Admin → Messages** on the site |
 
 **Where things live**
 - App files: `/var/www/styleguide` (copied from `~/styleguideforwomen` on each update)

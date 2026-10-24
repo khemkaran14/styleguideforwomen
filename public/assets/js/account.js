@@ -35,7 +35,7 @@ const ACCT=(()=>{
     if(S.profile&&S.profile.bt&&BTN.some(b=>b[0]===S.profile.bt)){BT=S.profile.bt;if(D.src){syncDR();drawDR()}}
     renderBtn();renderGrid();renderForYou();
     $('#adminLink').hidden=$('#admin').hidden=!(S.user&&S.user.admin);
-    if(S.user&&S.user.admin)loadMembers();
+    if(S.user&&S.user.admin){loadMembers();loadMessages()}
   }
 
   /* header */
@@ -159,6 +159,18 @@ const ACCT=(()=>{
 
   /* admin */
   let admTab='overview';
+  async function loadMessages(){
+    try{const {messages}=await api('GET','/api/admin/messages');
+      $('#admMsgCount').textContent=messages.length?`(${messages.length})`:'';
+      $('#admMessages').innerHTML=messages.length?`<p class="small" style="margin:0 0 10px">Messages sent through the <a href="/contact" target="_blank">contact form</a>, newest first. They’re deleted automatically after 12 months.</p>`+messages.map(m=>`<div class="notice" style="background:var(--surface-2);margin-bottom:10px">
+        <div class="row" style="justify-content:space-between;gap:8px"><div><b>${esc(m.name)}</b> · <a href="mailto:${esc(m.email)}?subject=${encodeURIComponent('Re: '+(m.topic||'your message'))}">${esc(m.email)}</a><br><span class="small" style="margin:0">${esc(m.topic||'')} · ${new Date(m.created).toLocaleString()}</span></div>
+        <div class="row"><a class="btn ghost" style="padding:4px 10px;font-size:.72rem;text-decoration:none" href="mailto:${esc(m.email)}?subject=${encodeURIComponent('Re: '+(m.topic||'your message'))}">Reply</a><button class="btn ghost" data-delmsg="${m.id}" style="padding:4px 10px;font-size:.72rem">Delete</button></div></div>
+        <p style="margin:8px 0 0;white-space:pre-wrap">${esc(m.message)}</p></div>`).join(''):`<p class="small">No messages yet. They’ll appear here when someone uses the <a href="/contact" target="_blank">contact form</a>.</p>`;
+    }catch(e){}
+  }
+  $('#admMessages').addEventListener('click',async e=>{const b=e.target.closest('[data-delmsg]');if(!b)return;
+    if(b.dataset.sure!=='1'){b.dataset.sure='1';b.textContent='Tap again to delete';return}
+    try{await api('DELETE','/api/admin/messages/'+b.dataset.delmsg);toast('Message deleted');loadMessages()}catch(err){toast(err.message)}});
   async function loadMembers(){try{S.members=(await api('GET','/api/admin/members')).members;renderAdmin()}catch(e){}}
   function renderAdmin(){
     const M=S.members;
@@ -187,7 +199,7 @@ const ACCT=(()=>{
       <div class="row" style="margin-top:12px"><button class="btn alt" id="admSave">Publish settings</button><span class="small" id="admMsg" style="margin:0"></span></div>`;
     }
   }
-  $('#admTabs').addEventListener('click',e=>{const b=e.target.closest('[data-at]');if(!b)return;admTab=b.dataset.at;$('#admTabs').querySelectorAll('[data-at]').forEach(x=>x.setAttribute('aria-selected',x===b));document.querySelectorAll('.admp').forEach(p=>p.hidden=p.dataset.ap!==admTab);if(admTab!=='site')loadMembers()});
+  $('#admTabs').addEventListener('click',e=>{const b=e.target.closest('[data-at]');if(!b)return;admTab=b.dataset.at;$('#admTabs').querySelectorAll('[data-at]').forEach(x=>x.setAttribute('aria-selected',x===b));document.querySelectorAll('.admp').forEach(p=>p.hidden=p.dataset.ap!==admTab);if(admTab==='messages')loadMessages();else if(admTab!=='site')loadMembers()});
   $('#admSite').addEventListener('input',()=>{$('#admSite').dataset.dirty='1'});
   $('#admSite').addEventListener('change',e=>{$('#admSite').dataset.dirty='1';const t=e.target;if(t.dataset.hide)t.closest('.lp').classList.toggle('hid',t.checked);
     if(t.dataset.feat&&$('#admSite').querySelectorAll('[data-feat]:checked').length>8){t.checked=false;toast('Up to 8 front-page looks')}});
@@ -211,6 +223,11 @@ const ACCT=(()=>{
     api('GET','/api/site').then(applySite).catch(()=>{});
     api('GET','/api/auth/options').then(o=>{emailReset=!!o.emailReset}).catch(()=>{});
     const u=new URL(location.href),rt=u.searchParams.get('reset');
+    // links from the look pages: /?look=id opens the look, /?try=id loads it in the Dressing Room
+    const lk=u.searchParams.get('look'),tr=u.searchParams.get('try');
+    if(lk||tr){u.searchParams.delete('look');u.searchParams.delete('try');history.replaceState(null,'',u.pathname+u.search+u.hash);
+      const o=L.find(x=>x.id===(lk||tr));
+      if(o&&HAS(o)){if(lk)openLook(o.id);else{Promise.resolve(typeof drReady!=='undefined'&&drReady).catch(()=>{}).then(()=>pickSubject(o.id));setTimeout(()=>$('#studio').scrollIntoView({behavior:'smooth'}),300)}}}
     if(rt){resetToken=rt;u.searchParams.delete('reset');history.replaceState(null,'',u.pathname+u.search+u.hash);openDlg('reset')}
     try{const me=await api('GET','/api/me');if(me.user)await adopt(me,{merge:true});else renderBtn()}catch(e){renderBtn()}
   })();

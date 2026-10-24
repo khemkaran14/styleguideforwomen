@@ -24,6 +24,13 @@ const SMTP = {
   from: process.env.MAIL_FROM || process.env.SMTP_USER || ''
 };
 const EMAIL_ON = !!(SMTP.host && SMTP.from && PUBLIC_URL);
+// Site identity for page titles, legal pages and search engines
+const SITE = {
+  SITE_NAME: process.env.SITE_NAME || 'The Ultimate Style Guide',
+  CONTACT_EMAIL: process.env.CONTACT_EMAIL || '',
+  GOOGLE_SITE_VERIFICATION: process.env.GOOGLE_SITE_VERIFICATION || '',
+  PUBLIC_URL
+};
 const RESET_MINUTES = 60;          // emailed links
 const ADMIN_RESET_HOURS = 24;      // links an admin creates and shares
 fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -50,6 +57,10 @@ CREATE TABLE IF NOT EXISTS looks (
   data TEXT NOT NULL, t INTEGER NOT NULL, PRIMARY KEY (user_id, id)
 );
 CREATE TABLE IF NOT EXISTS site (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, email TEXT NOT NULL, topic TEXT,
+  message TEXT NOT NULL, created INTEGER NOT NULL, ip TEXT
+);
 CREATE TABLE IF NOT EXISTS resets (
   hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, expires INTEGER NOT NULL
 );
@@ -84,13 +95,13 @@ function newResetToken(userId, ms) {
   return token;
 }
 let mailer = null;
-function sendMail(to, subject, text) {
+function sendMail(to, subject, text, replyTo) {
   if (!mailer) {
     const nodemailer = require('nodemailer');
     mailer = nodemailer.createTransport({ host: SMTP.host, port: SMTP.port, secure: SMTP.port === 465,
       auth: SMTP.user ? { user: SMTP.user, pass: SMTP.pass } : undefined });
   }
-  return mailer.sendMail({ from: `"The Ultimate Style Guide" <${SMTP.from}>`, to, subject, text });
+  return mailer.sendMail({ from: `"${String(process.env.SITE_NAME || 'The Ultimate Style Guide').replace(/"/g, '')}" <${SMTP.from}>`, to, subject, text, replyTo });
 }
 function readCookie(req, name) {
   const raw = req.headers.cookie || '';
@@ -111,6 +122,7 @@ app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  if (req.secure) res.setHeader('Strict-Transport-Security', 'max-age=31536000');
   next();
 });
 // attach the signed-in user
@@ -126,7 +138,7 @@ app.use((req, res, next) => {
   next();
 });
 // Block cross-site form/fetch posts: a browser always sends Origin on these.
-app.use('/api/', (req, res, next) => {
+app.use(['/api/', '/contact'], (req, res, next) => {
   if (req.method === 'GET' || req.method === 'HEAD') return next();
   const origin = req.headers.origin;
   if (origin) {
@@ -305,17 +317,74 @@ app.get('/api/admin/export.csv', needAdmin, (req, res) => {
   res.send(['name,email,joined,last_active,style,body_type', ...rows.map(r => [r.name, r.email, r.created, r.last_active, r.vibe, r.bt].map(esc).join(','))].join('\n'));
 });
 
+app.get('/api/admin/messages', needAdmin, (req, res) => {
+  res.json({ messages: q('SELECT id, name, email, topic, message, created FROM messages ORDER BY id DESC LIMIT 500').all() });
+});
+app.delete('/api/admin/messages/:id', needAdmin, (req, res) => {
+  q('DELETE FROM messages WHERE id = ?').run(Number(req.params.id) || 0);
+  res.json({ ok: true });
+});
+
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
 
-// ---------- static site ----------
-app.use('/assets', express.static(path.join(__dirname, 'public/assets'), { maxAge: '30d', immutable: false, setHeaders: (res, file) => { if (file.endsWith('.js')) res.setHeader('Cache-Control', 'no-cache'); } }));
-app.use(express.static(path.join(__dirname, 'public'), { maxAge: '5m', extensions: ['html'] }));
-app.get('/{*any}', (req, res) => res.sendFile(path.join(__dirname, 'public/index.html')));
+// ---------- static files ----------
+app.use('/assets', express.static(path.join(__dirname, 'public/assets'), { maxAge: '30d', immutable: false, setHeaders: (res, file) => { if (/\.(js|css)$/.test(file)) res.setHeader('Cache-Control', 'no-cache'); } }));
+app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1d', index: false }));
+
+// ---------- pages for people and search engines ----------
+const siteHidden = () => { const r = q('SELECT value FROM site WHERE key = ?').get('config'); return r ? (JSON.parse(r.value).hidden || []) : []; };
+const contactLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 8, standardHeaders: 'draft-7', legacyHeaders: false, message: 'Too many messages. Please try again later.' });
+app.use('/contact', express.urlencoded({ extended: false, limit: '20kb' }));
+const notFound = require('./pages')(app, {
+  cfg: SITE, hiddenLooks: siteHidden, contactLimiter,
+  async saveMessage(m, req) {
+    q('INSERT INTO messages (name, email, topic, message, created, ip) VALUES (?, ?, ?, ?, ?, ?)').run(m.name, m.email, m.topic, m.message, Date.now(), req.ip || '');
+    const to = SITE.CONTACT_EMAIL || ADMIN_EMAILS[0];
+    if (EMAIL_ON && to) {
+      sendMail(to, `[${SITE.SITE_NAME}] ${m.topic || 'Message'} from ${m.name}`,
+        `${m.message}\n\n--\nFrom: ${m.name} <${m.email}>\nReply to this email to answer them.`, m.email)
+        .catch(e => console.error('Contact email failed:', e.message));
+    }
+  }
+});
+
+// The app's home page, with search and sharing tags added
+const homeTemplate = fs.readFileSync(path.join(__dirname, 'public/index.html'), 'utf8');
+app.get('/', (req, res) => {
+  const base = PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
+  const N = SITE.SITE_NAME;
+  const title = `${N}: Indian, Fusion & Western Outfit Ideas for Women`;
+  const desc = 'Outfit ideas for every occasion: sarees, lehengas, sharara sets, Indo-western fusion and western looks, with a style quiz, colour combinations and a Dressing Room to try on and recolour outfits.';
+  const e = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const ld = [
+    { '@context': 'https://schema.org', '@type': 'WebSite', name: N, url: base + '/', inLanguage: 'en-IN', description: desc },
+    { '@context': 'https://schema.org', '@type': 'Organization', name: N, url: base + '/', logo: base + '/icon-512.png', ...(SITE.CONTACT_EMAIL ? { email: SITE.CONTACT_EMAIL } : {}) }
+  ];
+  const seo = `<title>${e(title)}</title>
+<meta name="description" content="${e(desc)}">
+<link rel="canonical" href="${e(base)}/">
+<meta property="og:site_name" content="${e(N)}">
+<meta property="og:type" content="website">
+<meta property="og:title" content="${e(title)}">
+<meta property="og:description" content="${e(desc)}">
+<meta property="og:url" content="${e(base)}/">
+<meta property="og:image" content="${e(base)}/assets/img/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:locale" content="en_IN">
+<meta name="twitter:card" content="summary_large_image">
+${app.locals.headCommon()}
+${ld.map(j => `<script type="application/ld+json">${JSON.stringify(j).replace(/</g, '\\u003c')}</script>`).join('\n')}`;
+  const html = homeTemplate.replace('<!--SEO-->', seo).replace('<!--FOOTER-->', app.locals.footerHTML());
+  res.set('Cache-Control', 'no-cache').type('html').send(html);
+});
+app.use(notFound);
 
 // clean expired sessions daily
 setInterval(() => {
   q('DELETE FROM sessions WHERE expires < ?').run(Date.now());
   q('DELETE FROM resets WHERE expires < ?').run(Date.now());
+  q('DELETE FROM messages WHERE created < ?').run(Date.now() - 365 * 864e5);
 }, 36e5).unref();
 
 app.listen(PORT, process.env.HOST || '127.0.0.1', () => {

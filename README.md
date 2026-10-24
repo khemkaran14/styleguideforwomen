@@ -7,7 +7,8 @@ A style guide for Indian and global wardrobes: a photo lookbook, outfits by occa
 - **Lookbook, Occasions, Style Quiz, Colour Combos, Rules**: browse and filter 47 photo looks
 - **Dressing Room**: swap and recolour pieces, save looks
 - **Accounts**: sign up, sign in, sign out, change password, forgot password (email link or admin-issued link), style profile, delete account
-- **Admin**: member list with CSV export, reset links, roles, announcement banner, front-page and hidden looks
+- **Admin**: member list with CSV export, reset links, roles, contact-form inbox, announcement banner, front-page and hidden looks
+- **Pages for Google**: a page for every look (`/looks/<id>`) and occasion (`/occasions/<id>`), About, Contact, Privacy policy, Terms of use, a real 404 page, `robots.txt`, `sitemap.xml` (with images), canonical and Open Graph tags, structured data, icons and a share image
 
 ## Tech
 
